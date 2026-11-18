@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""Seed the guest's registry box with Windows 95's own INF data.
+
+    py -3 tools/reginst.py BOX            (e.g. w95\\xcopy, the w16test box)
+
+What Win95 setup writes: setupc.inf's [winbase] and [winapps], shell.inf's
+[shell] and timezone.inf's AddReg sections. All into
+HKCU\\Software\\pcrecomp\\BOX\\{HKLM,HKCU} (pcrecomp regbox32.c; HKCR is
+HKLM\\SOFTWARE\\Classes there). Paths stay the guest's (C:\\WINDOWS...),
+which vxd32 boxes under work/root.
+ponytail: AddReg only (no DelReg, no UpdateInis); flag bits 1 (binary),
+0x10001 (dword), 0x10000 (multi-sz), 0x20000 (expand), 2 (no clobber) read, the rest ignored.
+"""
+import csv, os, re, sys, winreg
+import pefile
+
+SYS = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'work', 'sys')
+LDID = {'10': r'C:\WINDOWS', '11': r'C:\WINDOWS\SYSTEM', '25': r'C:\WINDOWS', '30': 'C:\\', '24': 'C:\\',
+        '17': r'C:\WINDOWS\INF', '18': r'C:\WINDOWS\HELP', '20': r'C:\WINDOWS\FONTS', '12': r'C:\WINDOWS\SYSTEM\IOSUBSYS'}
+
+
+def sections(text):
+    sec, cur = {}, None
+    for l in re.sub(r'\\[ \t]*\r*\n\s*', '', text).splitlines():   # INF line continuations
+        s = l.strip()
+        if not s.startswith('"'):
+            s = re.sub(r';.*$', '', s) if '"' not in s else s
+        s = s.strip()
+        if s.startswith('['): cur = sec.setdefault(s[1:s.index(']')].lower(), [])
+        elif s and not s.startswith(';') and cur is not None: cur.append(s)
+    return sec
+
+
+def strings(sec, extra):
+    strs = dict(LDID, **extra)
+    for l in sec.get('strings', []):
+        m = re.match(r'"?(\w+)"?\s*=\s*(?:"([^"]*)"|([^;]*?))\s*(?:;.*)?$', l)   # a quoted value may have a comment after it
+        if m: strs[m.group(1).lower()] = m.group(2) if m.group(2) is not None else m.group(3)
+    return lambda s: re.sub(r'%(\w+)%', lambda m: strs.get(m.group(1).lower(), m.group(0)), s).replace('%%', '%')
+
+
+def addreg(sec, names, sub):
+    for n in names:
+        for l in sec.get(n.strip().lower(), []):
+            f = [x.strip() for x in next(csv.reader([sub(l)], skipinitialspace=True))]
+            if len(f) >= 2 and f[0].upper() in ('HKLM', 'HKCR', 'HKCU'):
+                yield f + [''] * (5 - len(f))
+
+
+def inf_install(path, install):
+    sec = sections(open(path, encoding='latin-1').read())
+    sub = strings(sec, {})
+    for l in sec.get(install.lower(), []):
+        k, _, v = l.partition('=')
+        if k.strip().lower() == 'addreg':
+            yield from addreg(sec, v.split(','), sub)
+
+
+def reginst(dll):
+    p = pefile.PE(os.path.join(SYS, dll), fast_load=True)
+    p.parse_data_directories([pefile.DIRECTORY_ENTRY['IMAGE_DIRECTORY_ENTRY_RESOURCE']])
+    for t in getattr(p, 'DIRECTORY_ENTRY_RESOURCE', type('', (), {'entries': []})).entries:
+        if t.name and str(t.name) == 'REGINST':
+            e = t.directory.entries[0].directory.entries[0].data.struct
+            sec = sections(p.get_data(e.OffsetToData, e.Size).decode('latin-1'))
+            mod = LDID['11'] + '\\' + dll
+            sub = strings(sec, {'_sys_mod_path': mod, '_mod_path': mod})
+            # the install sections advpack runs on DllRegisterServer: every AddReg= not under an "un"/"del" one
+            for name, ls in sec.items():
+                if re.search(r'unreg|uninst|del|remove', name): continue
+                for l in ls:
+                    k, _, v = l.partition('=')
+                    if k.strip().lower() == 'addreg':
+                        yield from addreg(sec, v.split(','), sub)
+
+
+def main():
+    box = sys.argv[1]
+    # Windows 95: setupc.inf's base options (winbase, winapps), shell.inf and
+    # timezone.inf. No ieshell.inf and no REGINST resources (IE 3's shdocvw).
+    items = []
+    for inf, sec in (('setupc.inf', 'winbase'), ('setupc.inf', 'winapps'), ('shell.inf', 'shell'),
+                     ('timezone.inf', 'Install_TimeZone')):
+        items += list(inf_install(os.path.join(SYS, inf), sec))
+    n = 0
+    for hive, key, name, flags, val, *data in items:
+        if re.search(r'(?i)\\RunOnce|\\RenameFiles|\\Active Setup\\', key): continue   # setup's one-shot work, not the shell's state
+        if flags and not re.match(r'(?i)^(0x)?[0-9a-f]+$', flags): flags, val = '', flags
+        fl = int(flags, 0) if flags else 0
+        at = r'Software\pcrecomp\%s\%s' % (box, {'HKCR': r'HKLM\SOFTWARE\Classes', 'HKLM': 'HKLM', 'HKCU': 'HKCU'}[hive.upper()])
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, at + '\\' + key) as k:
+            if fl & 2:   # FLG_ADDREG_NOCLOBBER
+                try: winreg.QueryValueEx(k, name or None); continue
+                except OSError: pass
+            if fl & 1 and fl & 0x10000:   # REG_DWORD written as 4 bytes
+                v = [int(x, 16) for x in [val] + data if x]
+                if len(v) == 1: v = list(v[0].to_bytes(4, 'little'))   # one number, not bytes (0x10001,"0x...")
+                b = bytes(v)
+                winreg.SetValueEx(k, name or None, 0, winreg.REG_DWORD, int.from_bytes(b[:4].ljust(4, b'\0'), 'little')) if len(b) <= 4 else \
+                    winreg.SetValueEx(k, name or None, 0, winreg.REG_BINARY, b)
+            elif fl & 0x10001 == 0x10000:
+                winreg.SetValueEx(k, name or None, 0, winreg.REG_MULTI_SZ, [x for x in [val] + data if x])   # FLG_ADDREG_TYPE_MULTI_SZ
+            elif fl & 1:
+                winreg.SetValueEx(k, name or None, 0, winreg.REG_BINARY, bytes(int(x, 16) for x in [val] + data if x))
+            elif val or name:
+                winreg.SetValueEx(k, name or None, 0, winreg.REG_EXPAND_SZ if fl & 0x20000 else winreg.REG_SZ, val)
+        n += 1
+    # The time zone: timezone.inf leaves "!!!First Boot!!!", and Explorer then WinExecs
+    # "rundll32 shell32.dll,Control_RunDLL timedate.cpl,,/m" for setup's zone pick. Pick here what
+    # that page would: Win95's first zone with the host's bias, written as timedate.cpl does.
+    # ponytail: first match by bias only (several zones share one); the host's zone name is not mapped.
+    import time
+    tzs = r'Software\pcrecomp\%s\HKLM\Software\Microsoft\Windows\CurrentVersion\Time Zones' % box
+    bias = time.timezone // 60
+    with winreg.OpenKey(winreg.HKEY_CURRENT_USER, tzs) as k:
+        names = []
+        try:
+            for i in range(1000): names.append(winreg.EnumKey(k, i))
+        except OSError: pass
+    for zn in names:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, tzs + '\\' + zn) as z:
+            tzi = winreg.QueryValueEx(z, 'TZI')[0]
+            if int.from_bytes(tzi[:4], 'little', signed=True) != bias: continue
+            std, dlt = winreg.QueryValueEx(z, 'Std')[0], winreg.QueryValueEx(z, 'Dlt')[0]
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\pcrecomp\%s\HKLM\System\CurrentControlSet\control\TimeZoneInformation' % box) as k:
+            for nm, v in (('StandardName', std), ('DaylightName', dlt)):
+                winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, v)
+            for nm, v in (('Bias', tzi[0:4]), ('StandardBias', tzi[4:8]), ('DaylightBias', tzi[8:12]),
+                          ('StandardStart', tzi[12:28]), ('DaylightStart', tzi[28:44]), ('ActiveTimeBias', tzi[0:4])):
+                winreg.SetValueEx(k, nm, 0, winreg.REG_BINARY, v)
+        print('time zone:', zn)
+        break
+    # HKCC\Display\Settings, which setup's display class installer writes (no INF has it): USER's
+    # boot (seg 21 3A67) opens it, and when it is missing queues RunOnce *DisplayFallback ("rundll32
+    # shell32.dll,Control_RunDLL desk.cpl ,-1"). The mode is the display stand-in's (drv16, 800x600x16).
+    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\pcrecomp\%s\HKLM\SYSTEM\CurrentControlSet'
+                          r'\Hardware Profiles\Current\Display\Settings' % box) as k:
+        for nm, v in (('Resolution', '800,600'), ('BitsPerPixel', '16'), ('DPILogicalX', '96'), ('DPILogicalY', '96'),
+                      ('DPIPhysicalX', '96'), ('DPIPhysicalY', '96'), ('fonts.fon', 'vgasys.fon'),
+                      ('fixedfon.fon', 'vgafix.fon'), ('oemfonts.fon', 'vgaoem.fon')):
+            winreg.SetValueEx(k, nm, 0, winreg.REG_SZ, v)
+    # USER's appearance keys are the guest's whole (pcrecomp regbox32.c "pcrecomp:whole"): a value
+    # Win95 has not written falls to USER's own default, not to Windows 11's (white faces, a black desktop)
+    # The same for the cursor scheme (the host's *_eoa.cur paths), the shell folders (the host's
+    # profile Desktop: shell32 computes C:\WINDOWS\Desktop when none is set) and Run's MRU.
+    # ponytail: these keys only; other Explorer keys Win98 does not write still read through.
+    xp = r'Software\Microsoft\Windows\CurrentVersion\Explorer'
+    for k in (r'HKCU\Control Panel\Colors', r'HKCU\Control Panel\Desktop', r'HKCU\Control Panel\Desktop\WindowMetrics',
+              r'HKCU\Control Panel\Cursors', 'HKCU\\' + xp + r'\Shell Folders', 'HKCU\\' + xp + r'\User Shell Folders',
+              'HKCU\\' + xp + r'\RunMRU', 'HKLM\\' + xp + r'\Shell Folders', 'HKLM\\' + xp + r'\User Shell Folders'):
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\pcrecomp\%s\%s' % (box, k)) as h:
+            if xp in k:   # shell32's caches of an earlier run (Desktop = the host's) go
+                vals, i = [], 0
+                while True:
+                    try: vals.append(winreg.EnumValue(h, i)[0]); i += 1
+                    except OSError: break
+                for v in vals: winreg.DeleteValue(h, v)
+            winreg.SetValueEx(h, 'pcrecomp:whole', 0, winreg.REG_DWORD, 1)
+    # Every class key Win98's INFs wrote is the guest's whole too: a value they leave out
+    # (My Computer's CLSID has no default, shell32 then uses its own "My Computer") must not
+    # come from the host's (Windows 11's "This PC"). ponytail: Classes only; other keys still
+    # read through to the host for values Win98 did not write.
+    def whole(path):
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_ALL_ACCESS) as h:
+            winreg.SetValueEx(h, 'pcrecomp:whole', 0, winreg.REG_DWORD, 1)
+            subs, i = [], 0
+            while True:
+                try: subs.append(winreg.EnumKey(h, i)); i += 1
+                except OSError: break
+        for s in subs: whole(path + '\\' + s)
+    whole(r'Software\pcrecomp\%s\HKLM\Software\Classes' % box)
+    # Explorer's keys too, subtree and all (regbox32: a whole key's missing subkeys do not read
+    # through): the host's HideFileExt=0, its Win11 ShellState and MenuOrder\Favorites, and its
+    # MyComputer\NameSpace are not Win98's. Missing values mean shell32's own defaults.
+    for hive in ('HKCU', 'HKLM'):
+        winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\pcrecomp\%s\%s\%s' % (box, hive, xp)).Close()
+    # Folder Options' own defaults (HKLM ...\Explorer\Advanced\Folder\*: RegPath, ValueName,
+    # DefaultValue), as the dialog's "Restore Defaults" writes them: HideFileExt=1 and the rest.
+    # ponytail: only checkbox entries with an HKCU root and a dword default.
+    adv = r'Software\pcrecomp\%s\HKLM\%s\Advanced\Folder' % (box, xp)
+    def opts(path):
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as h:
+            subs, i = [], 0
+            while True:
+                try: subs.append(winreg.EnumKey(h, i)); i += 1
+                except OSError: break
+            try:
+                if winreg.QueryValueEx(h, 'HKeyRoot')[0] == 0x80000001:
+                    rp, vn, dv = (winreg.QueryValueEx(h, n)[0] for n in ('RegPath', 'ValueName', 'DefaultValue'))
+                    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\pcrecomp\%s\HKCU\%s' % (box, rp)) as k:
+                        try: winreg.QueryValueEx(k, vn)
+                        except OSError: winreg.SetValueEx(k, vn, 0, winreg.REG_DWORD, dv)
+            except (OSError, TypeError): pass
+        for s in subs: opts(path + '\\' + s)
+    try: opts(adv)
+    except OSError: pass
+    for hive in ('HKCU', 'HKLM'):
+        whole(r'Software\pcrecomp\%s\%s\%s' % (box, hive, xp))
+    # The startup lists are the box's own, empty: else the open falls through to the host's
+    # (read-only), and Explorer starts the host's Run entries (rundll32 ..., "Cannot find").
+    for hive in ('HKLM', 'HKCU'):
+        for k in ('Run', 'RunOnce', 'RunOnceEx', 'RunServices', 'RunServicesOnce'):
+            with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\pcrecomp\%s\%s\Software\Microsoft\Windows\CurrentVersion\%s' % (box, hive, k)) as h:
+                while True:   # and emptied: an old run's leftovers (USER's *DisplayFallback desk.cpl line)
+                    try: winreg.DeleteValue(h, winreg.EnumValue(h, 0)[0])
+                    except OSError: break
+    print('%d lines into HKCU\\Software\\pcrecomp\\%s' % (n, box))
+
+
+if __name__ == '__main__':
+    main()
