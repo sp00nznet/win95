@@ -97,6 +97,9 @@ if __name__ == '__main__':
     # GDI 11:0DC2 `call cs:[si+0EC4h]`: three near stubs (`jmp far` to imports) its
     # init steps through, counted by the words at 0EADh (1, 6, 4, 0); Win98 SE's 11:2C9E..
     res['GDI'].setdefault('11', []).extend(['0xeb5', '0xeba', '0xebf'])
+    # GDI 1:8B53 `mov di, 1`: an entry decoded at 8B55, inside it, took the fall-through
+    # of 8B46 and lost `push [bp+0Ch]` (the frame then popped a stale ds).
+    res['GDI'].setdefault('1', []).append('0x8b53')
     # USER 28:1ADA `call cs:[bx+60Bh]`: 50 near handlers (a message's size by its kind)
     # whose table ne_codemap does not read.
     u28 = parse_ne(os.path.join(root, 'USER.EXE')).segments[27].data

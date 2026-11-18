@@ -203,9 +203,15 @@ more itself on 95:
    USER32's threads thunk into USER, and **calc starts**: DISPLAY.ExtTextOut draws its
    menu bar ("Edit", "View", "Help"). No window is captured yet (hiddenrun: "no
    window"; W16_WINDOW=1 needed, see below).
+15. USER 9:10C7 called far through F000:FF53 with ds 2634: GDI 1:8B46's frame popped a
+   stale ds. ne_lift had split 1:8B53 `mov di, 1` at 8B55 (a branch target in data
+   decoded as code) and fallen through mid-instruction, losing `push [bp+0Ch]`.
+   Seed 1:8B53 plus a lifter fix (pcrecomp 97103d9: a last instruction that straddles
+   the next start decodes on from its end). Win98 SE's relift is unchanged. Found with
+   the new `W16_DSW=2634` and `W16_WW=1367:8B56` (W16_FN=1 for both).
 
 Win98 SE regression: win98-recomp built against pcrecomp branch w95 (build-w95)
-passes check_calc and check_explorer (pcrecomp 5c84840). Its xcopy fails 1-3 runs in 30, on its own
+passes check_calc and check_explorer (pcrecomp 5c84840 and 97103d9). Its xcopy fails 1-3 runs in 30, on its own
 build too: k32host's CreateProcessA eax race (step 9 above; win95's fix applies).
 
 ### Where milestone 2 stands (handoff)
@@ -216,11 +222,12 @@ Build all targets (`build.cmd` with no `--target`): the lifted modules are separ
 `w16test_*.dll` parts that `--target w16test` does not relink. After a seed change:
 `sh work/relink.sh` (ne_link + build, ~2 min).
 
-**Next: a far call to F000:FF53 from USER 9:10C7** (`call far ds:[16Ch]` with ds =
-2634, not USER's DGROUP 0A67; [16C] itself is GetProcAddress(DISPLAY, 500) = 0, which
-USER checks). ds is wrong on entry to that function: suspect a frame left unbalanced
-by the USER seg 28 message thunks (many `returned past` / `unwound` lines just before,
-`seg077_1FA2`, `105F`, `1081`) or by the new thunk-handler far jump (step 13). Then:
+**Next: KRNL386 1:AF9C reads a garbage flat address (EF54EF51)**, called from GDI
+1:82F4 (via 1:5A84, from USER 6:74CE) as KERNEL AF72(0, handle, heap): a 32-bit local
+heap's block size, `[[heap+handle] + [heap+6Ch] - 4]`, with the heap GDI keeps at
+ds:[138h]. Just before, the 16->32 stubs to kernel32 0xBFF92573 (cx A8) returned 0 and
+0xBFF92593 (cx AC) 25Ch: suspect a Local32 heap op that failed (check what GDI's
+Local32Init/Alloc got back, and kernel32's side of those entries). Then:
 calc's window on the private desktop and check_calc (12+3=15; its reference must be
 cut from a Win95 render, not Win98's), then setup.ps1 (CAB order: MINI.CAB and
 PRECOPY hold Setup's Win 3.1 KRNL386/USER/GDI under the same names: never over the
