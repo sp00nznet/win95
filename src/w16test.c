@@ -5,7 +5,7 @@
  * for KRNL386 + GDI + USER (work/w16, NE_IDENTITY_SEL=1) at a flat address,
  * gives segment n the LDT selector (n << 3) | 7, and points native32's
  * 16-bit bridge at runtime/win16/identity.c. Then it calls QT_Thunk
- * (0xBFF727D9) the way a user32 thunk does: a frame with the thunk index at
+ * (0xBFF728D0) the way a user32 thunk does: a frame with the thunk index at
  * [ebp-4], the 16-bit arguments pushed as words, edx = the 16:16 target.
  *
  * Win16 identity mode: cpu.h RECOMP_W16_IDENTITY. */
@@ -25,7 +25,7 @@ extern uint32_t g_fs_base;
 uint16_t native32_w9x_alloc_sel(uint32_t base, uint32_t limit);
 uint8_t *native32_w9x_desc(uint16_t sel);
 
-#define QT_THUNK 0xBFF727D9u
+#define QT_THUNK 0xBFF728D0u   /* Win95 (Win98 SE: 0xBFF727D9) */
 #define MEM32(a) (*(uint32_t*)(uintptr_t)(a))
 #define MEM16(a) (*(uint16_t*)(uintptr_t)(a))
 #define SEL(n) ((uint16_t)(((n) << 3) | 7))
@@ -53,15 +53,16 @@ static int map_image(const char* path) {
     for (int s = 1; s <= RECOMP_NUM_SEG; s++)
         native32_w9x_set_sel(SEL(s), (uint32_t)(uintptr_t)g_img + SEG_SEGMENT_BASE[s], 0xFFFF, 1);
     native32_w16_enter = w16_enter;
-    {   /* QT_Thunk's 16-bit returns ([0xBFFC979C] for a Win32 thread, [0xBFFC97A4]
-         * for the task's thread) come from KRNL386's handshake block (+1C,
-         * +24): on Win98, KRNL386 stubs that jump far back into kernel32's
-         * tails. The host builds the same two stubs, 66 EA off32 sel16. */
-        static uint8_t stubs[16] = { 0x66, 0xEA, 0x6D, 0x28, 0xF7, 0xBF, 0x1B, 0x00,
-                                     0x66, 0xEA, 0x13, 0x29, 0xF7, 0xBF, 0x1B, 0x00 };
+    {   /* QT_Thunk's 16-bit returns ([0xBFFBC07C] for a Win32 thread, [0xBFFBC084]
+         * for the task's thread) come from KRNL386's handshake block (+2C,
+         * +34 on Win95; +1C/+24 on Win98 SE): KRNL386 stubs that jump far
+         * back into kernel32's QT_Thunk tails (0xBFF72964, 0xBFF72A0A). The
+         * host builds the same two stubs, 66 EA off32 sel16. */
+        static uint8_t stubs[16] = { 0x66, 0xEA, 0x64, 0x29, 0xF7, 0xBF, 0x1B, 0x00,
+                                     0x66, 0xEA, 0x0A, 0x2A, 0xF7, 0xBF, 0x1B, 0x00 };
         uint16_t ss = native32_w9x_alloc_sel((uint32_t)(uintptr_t)stubs, sizeof stubs - 1);
-        MEM32(0xBFFC979Cu) = (uint32_t)ss << 16;
-        MEM32(0xBFFC97A4u) = (uint32_t)ss << 16 | 8;
+        MEM32(0xBFFBC07Cu) = (uint32_t)ss << 16;
+        MEM32(0xBFFBC084u) = (uint32_t)ss << 16 | 8;
     }
     fprintf(stderr, "[w16] %u segments of KRNL386+GDI+USER at %p, selectors %04X..%04X\n",
             RECOMP_NUM_SEG, (void*)g_img, SEL(1), SEL(RECOMP_NUM_SEG));

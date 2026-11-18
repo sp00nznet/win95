@@ -89,4 +89,7 @@ if __name__ == '__main__':
     res = dict(seeds(os.path.join(root, f)) for f in ('USER.EXE', 'GDI.EXE', 'shell.new'))
     # Hand seeds (call targets the code map cannot reach) are per build:
     # Win98 SE's were offsets in its KRNL386/GDI/USER; Win95's go here as found.
+    # KERNEL 1:653A: KRNL386's 32->16 entry, which kernel32 reaches through the
+    # table at KEXP+4 (filled at run time; Win98 SE's is 1:6582).
+    res['KERNEL'] = {'1': ['0x653a']}
     json.dump(res, sys.stdout)

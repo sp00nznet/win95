@@ -334,7 +334,7 @@ static int host_main(int argc, char** argv) {
                  * notepad as rebased off 0x400000 (xcopy32.exe, this host's own EXE, is there):
                  * tools/rebase.py work/sys work/rebased notepad.exe=0x01100000, then renamed
                  * notepad_1100.exe so its catalog is not the 0x400000 one) */
-                static const char *const prog[][2] = { { "calc.exe", "WINDOWS\\CALC.EXE" }, { "..\\rebased\\notepad_1100.exe", "WINDOWS\\NOTEPAD.EXE" },
+                static const char *const prog[][2] = { { "..\\rebased\\calc_1000.exe", "WINDOWS\\CALC.EXE" },   /* Win95's calc is linked at 0x400000 (98 SE's at 0x01000000): rebased there */ { "..\\rebased\\notepad_1100.exe", "WINDOWS\\NOTEPAD.EXE" },
                     { "..\\rebased\\explorer_1400.exe", "WINDOWS\\EXPLORER.EXE" },   /* rebased as notepad: explorer.exe=0x01400000 */
                     { "winmine.exe", "WINDOWS\\WINMINE.EXE" }, { "sol.exe", "WINDOWS\\SOL.EXE" }, { "cards.dll", "WINDOWS\\SYSTEM\\CARDS.DLL" } };
                 for (int i = 0; i < (int)(sizeof prog / sizeof *prog); i++) {
@@ -381,7 +381,7 @@ static int host_main(int argc, char** argv) {
          * bases are held from the host's start (native32_hold_image's relaunch),
          * or a host heap lands there first and the image is relocated where no
          * lifted code is (vxd32's PageReserve takes a held base as the image's). */
-        static const char* const later[] = { "mprexe.exe", "calc.exe", "..\\rebased\\notepad_1100.exe", "..\\rebased\\explorer_1400.exe" };
+        static const char* const later[] = { "mprexe.exe", "..\\rebased\\calc_1000.exe", "..\\rebased\\notepad_1100.exe", "..\\rebased\\explorer_1400.exe" };
         for (int i = 0; i < (int)(sizeof later / sizeof *later); i++) {
             char img[MAX_PATH];
             IMAGE_DOS_HEADER dh;

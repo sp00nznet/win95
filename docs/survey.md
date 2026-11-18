@@ -15,7 +15,11 @@ which is done. `tools/survey.py work/sys/kernel32.dll` lists the kernel boundary
   exactly its string resources (4 + 27), `xcopy32 C:\TEST\SRC C:\TEST\DST /S /I`
   copies a tree byte-identically and `/P` honours scripted y/n/y
   (`tools/check_m1.sh`, three checks).
-- **Milestone 2**: not started (next: KRNL386 BootStrap in Win16 identity mode).
+- **Milestone 2: started.** ne_link lifts Win95's KRNL386/GDI/USER/DDEML/MSGSRV32/SHELL/COMMCTRL
+  in Win16 identity mode; KRNL386's own BootStrap opens and loads itself, runs GlobalInit and
+  calls kernel32's boot entry, which runs; the boot then reaches ADVAPI32's entry (the first
+  module beyond the xcopy lift). Next: the full lift (gdi32, advapi32, user32, mpr..., calc) and
+  USER's LibEntry.
 
 ## The CD
 
@@ -118,7 +122,7 @@ more itself on 95:
 | vxd32.c Win98-only answers | behind `k32()` / `native32_w9x_is_win95()`: the table above |
 | k32host.c | this repo's copy, with Win95's addresses and handshake block |
 | regbox32 | as is, box `HKCU\Software\pcrecomp\w95\<app>` |
-| Win16 identity, drv16, ne_link | not yet tried (milestone 2) |
+| Win16 identity, drv16, ne_link | ne_link as is (seeds per build); identity.c answers VWIN32 4.00 on 95 |
 
 ## Milestone 1 log
 
@@ -140,3 +144,27 @@ more itself on 95:
    0xBFF76547), and k32host read CreateProcessA's eax after the machine lock
    was gone (another guest thread's eax; `guest_call` now holds it). The
    second race is in win98's k32host too. Soak: 40/40 copies, 8/8 gate runs.
+
+## Milestone 2 log
+
+1. **The CD's two KRNL386s.** `MINI.CAB` (and the PRECOPY CABs) hold Setup's own
+   Windows 3.1-based mini Windows: KRNL386 "Kernel Interface Version 3.10" (75490 bytes,
+   1995), USER, GDI, drivers, fonts, 13 names in all. Extracted after the main set
+   they overwrite the real OSR2 files (KRNL386 126944 bytes, "Version 4.00"). Extract
+   the main set (`win95_02.cab`, a spanned set of 02..28) last, or skip MINI/PRECOPY.
+   The real USER.EXE/GDI.EXE export the thunk connections (USRTHKCONNECTIONDATALS seg
+   30, MSGTHKCONNECTIONDATALS seg 28, GDITHKCONNECTIONDATALS seg 42, FT tables in
+   29 and 43) as on 98: `tools/w16_seeds.py` finds them unchanged.
+2. ne_link: link `kommctrl.dll` too (shell.new's COMMCTRL imports need its purges).
+   101 segments, 1.2 MB image.
+3. KRNL386 could not open itself: vxd32 read NATIVE32_W9X_ROOT with the CRT's
+   `getenv`, which does not see what the host set with SetEnvironmentVariable in the
+   same process; the first DOS call (before kernel32) went to a relative `root`.
+   Now GetEnvironmentVariable (pcrecomp; Win98 SE gets it too).
+4. kernel32 enters KRNL386 at **1:653A** (its 32->16 entry, through the table at
+   KEXP+4; Win98 SE's 1:6582): a hand seed in w16_seeds.py.
+5. QT_Thunk's tails for w16test's stubs: 0xBFF72964 and 0xBFF72A0A (Win98 SE's +F7
+   inside QT_Thunk, instruction for instruction), kept at [0xBFFBC07C]/[0xBFFBC084],
+   handshake +2C/+34 (98: +1C/+24).
+6. Win95's calc.exe is linked at 0x400000 (98 SE's at 0x01000000), where the host's
+   own EXE is: rebased to 0x01000000 (`work/rebased/calc_1000.exe`).

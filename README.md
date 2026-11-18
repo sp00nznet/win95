@@ -17,7 +17,7 @@ copy (extracted CAB files, catalogs, lifted C) goes into the gitignored
 |---|---|---|
 | 1 | Survey: Win95 vs Win98 SE kernel32, boot, VxD services (`docs/survey.md`) | done for milestone 1 |
 | 2 | milestone 1: a console program on Win95's own kernel32 | **done**: `xcopy32 /?` prints exactly its string resources, `/S /I` copies a tree byte-identically, `/P` honours y/n (`tools/check_m1.sh`) |
-| 3 | milestone 2: KRNL386/USER/GDI boot, calc, Explorer | not started |
+| 3 | milestone 2: KRNL386/USER/GDI boot, calc, Explorer | started: KRNL386's own BootStrap loads itself and boots kernel32 (`W16_LIBMAIN=KERNEL`); next is USER's LibEntry |
 
 Tested with Windows 95 OSR2 (4.00.1111), English.
 
@@ -36,6 +36,21 @@ build.cmd --target xcopy
 sh tools/run_xcopy.sh -- /?
 sh tools/check_m1.sh
 ```
+
+Milestone 2 so far (Win16 identity mode, after the steps above):
+
+```
+py -3 tools\w16_seeds.py work\sys > work\seeds\w16.json
+set NE_IDENTITY_SEL=1
+py -3 ..\pcrecomp\tools\ne\ne_link.py --work work\w16 --seeds work\seeds\w16.json --shims ..\pcrecomp\runtime\win16\identity work\sys\KRNL386.EXE work\sys\GDI.EXE work\sys\USER.EXE work\sys\DDEML.DLL work\sys\MSGSRV32.EXE work\sys\shell.new work\sys\kommctrl.dll
+py -3 ..\pcrecomp\tools\pe\rebase.py work\sys work\rebased calc.exe=0x01000000   (then rename it calc_1000.exe)
+py -3 tools\lift.py w16test work\sys\xcopy32.exe work\sys\kernel32.dll work\sys\gdi32.dll work\sys\advapi32.dll work\sys\user32.dll work\sys\mpr.dll work\sys\mprexe.exe work\sys\mprserv.dll work\sys\mspwl32.dll work\rebased\calc_1000.exe work\sys\comctl32.dll work\sys\shell32.dll
+build.cmd
+set W16_LIBMAIN=KERNEL & build\w16test.exe --mute     (W16_TRACE=1 for the 16-bit side)
+```
+
+Extract the CABs with the main set (`win95_02.cab`) last: MINI.CAB holds Setup's
+Windows 3.1-based KRNL386/USER/GDI under the same names (docs/survey.md).
 
 `VXD=1 sh tools/run_xcopy.sh -- /?` traces every VxD service. An unknown
 service stops the run with its id. The guest's C:\ is `work/root`; its
