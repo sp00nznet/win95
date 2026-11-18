@@ -23,7 +23,8 @@ def dosdt(t):
 
 def item(kind, attr, size, mtime, name):
     d, t = dosdt(mtime)
-    b = struct.pack('<BBIHHH', kind, 0, size, d, t, attr) + name.encode('ascii') + b'\0'
+    # the long name, then the 8.3 name (empty: the long one is 8.3); Win95's shell32 reads both
+    b = struct.pack('<BBIHHH', kind, 0, size, d, t, attr) + name.encode('ascii') + b'\0\0'
     if len(b) % 2: b += b'\0'
     return struct.pack('<H', len(b) + 2) + b
 

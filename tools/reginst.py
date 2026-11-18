@@ -147,7 +147,9 @@ def main():
     xp = r'Software\Microsoft\Windows\CurrentVersion\Explorer'
     for k in (r'HKCU\Control Panel\Colors', r'HKCU\Control Panel\Desktop', r'HKCU\Control Panel\Desktop\WindowMetrics',
               r'HKCU\Control Panel\Cursors', 'HKCU\\' + xp + r'\Shell Folders', 'HKCU\\' + xp + r'\User Shell Folders',
-              'HKCU\\' + xp + r'\RunMRU', 'HKLM\\' + xp + r'\Shell Folders', 'HKLM\\' + xp + r'\User Shell Folders'):
+              'HKCU\\' + xp + r'\RunMRU', 'HKLM\\' + xp + r'\Shell Folders', 'HKLM\\' + xp + r'\User Shell Folders',
+              'HKLM\\' + xp + r'\ShellExecuteHooks'):   # Win95 has none: the host's (its URL hook) made opening My Computer fail
+
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r'Software\pcrecomp\%s\%s' % (box, k)) as h:
             if xp in k:   # shell32's caches of an earlier run (Desktop = the host's) go
                 vals, i = [], 0
