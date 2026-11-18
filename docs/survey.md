@@ -15,11 +15,7 @@ which is done. `tools/survey.py work/sys/kernel32.dll` lists the kernel boundary
   exactly its string resources (4 + 27), `xcopy32 C:\TEST\SRC C:\TEST\DST /S /I`
   copies a tree byte-identically and `/P` honours scripted y/n/y
   (`tools/check_m1.sh`, three checks).
-- **Milestone 2: started.** ne_link lifts Win95's KRNL386/GDI/USER/DDEML/MSGSRV32/SHELL/COMMCTRL
-  in Win16 identity mode; KRNL386's own BootStrap opens and loads itself, runs GlobalInit and
-  calls kernel32's boot entry, which runs; the boot then reaches ADVAPI32's entry (the first
-  module beyond the xcopy lift). Next: the full lift (gdi32, advapi32, user32, mpr..., calc) and
-  USER's LibEntry.
+- **Milestone 2: in progress.** KRNL386 boots kernel32, GDI and USER; MSGSRV32 runs as the first task and calc starts (its menu bar draws). See the handoff at the end.
 
 ## The CD
 
@@ -177,19 +173,56 @@ more itself on 95:
    (Rebuild note: delete build/CMakeCache.txt after the first w16test lift: CMake
    picks the xcopy fallback at configure time.)
 
+8. **068F was not a stack.** The fault in 1:6808 is `cmp es:[0], ax` (result unused) on
+   the far pointer GetProcAddress16 (2:1BF9) returns for kernel32's ThunkConnect32:
+   KRNL386 touches the segment so the CPU's #NP loads it. 068F is GDI seg 42 (thunk
+   connection data), a load-on-call code segment on Win95 (flags 1D10; Win98 SE's,
+   seg 43, is PRELOAD 1D50). KRNL386's own exception 0Bh handler (1:0B06 -> 0B3E)
+   only does __GP recovery and the debugger. pcrecomp identity `w16_np` now loads a
+   not-present code segment on first touch through KRNL386's own GetCodeHandle
+   (KERNEL.93, 1:0626) in its (hExe : segment number) form (1:056A checks ds:0 for
+   'NE'): a real load with relocations. (Running the linked image's bytes instead is
+   wrong here: seg 42's relocations then name placeholder selectors, and kernel32's
+   thunk 35 rejects 017F.)
+9. kernel32 crashed in 0xBFF76AB0 on [0xBFFBC2B8] (the NLS tables): VWIN32 0Ch's
+   NLS block is at +3C on Win95 (+44 there is an input, 0xBFFBB5D4); vxd32 per build.
+10. Seeds (tools/w16_seeds.py): KERNEL 3:316A/316D/3170 (one routine's three
+   overlapping entries, cl = 2/1/0); GDI 11:0EB5/0EBA/0EBF (the `call cs:[si+0EC4h]`
+   init stubs, Win98 SE's 11:2C9E..); USER 28: the 50 handlers of `call cs:[bx+60Bh]`
+   (28:1ADA), read from the file.
+11. SHELL VxD dx=106h (USER 64:20F8, a profile setting handed down; Win98 SE's USER
+   never calls it): no-op.
+12. KRNL386 1:5C14 read the IVT (F000:FF53) as a thread: vxd32's `cur_task` (CurTDB
+   on every machine hand-over) read the thread's TDB at THDB+14 (Win98 SE); Win95's
+   is THDB+1C. Per build (`thread_tdb`).
+13. Win95 kernel32's per-process thunk dispatcher (0xBFF71988, USER -> MPR) for a
+   process the thunk data does not list yet does `push dword [0xBFFBC04C]; retf`: a
+   far jump to KRNL386 3:2372 on the 16-bit caller's frame (its return is USER's
+   `pop ds; retf`, not a 66 EA stub). identity runs it as a far jump (Win95 only).
+14. Now: GDI and USER boot, MSGSRV32 becomes the first task (VWIN32 01, CurTDB 0AD6),
+   USER32's threads thunk into USER, and **calc starts**: DISPLAY.ExtTextOut draws its
+   menu bar ("Edit", "View", "Help"). No window is captured yet (hiddenrun: "no
+   window"; W16_WINDOW=1 needed, see below).
+
 Win98 SE regression: win98-recomp built against pcrecomp branch w95 (build-w95)
-passes check_calc and check_explorer. Its xcopy fails 1-3 runs in 30, on its own
+passes check_calc and check_explorer (pcrecomp 5c84840). Its xcopy fails 1-3 runs in 30, on its own
 build too: k32host's CreateProcessA eax race (step 9 above; win95's fix applies).
 
 ### Where milestone 2 stands (handoff)
 
-kernel32's first thunk into KRNL386 (from 0xBFF97C32 through the handshake entry at
-[0xBFFBC450], via QT_Thunk 0xBFF728D0) reaches 1:6808, whose first stack read goes
-through **not-present selector 068F** (`[w16] not-present selector 068F read:
-segment 0`, then a fault at flat 01000001). QT_Thunk's Win32-thread path takes ss
-from TIB+7C and -base from TIB+78 (0xBFF7250F builds that alias from the thread's
-stack bounds, TIB-10h+14/+18; the same code as Win98's 0xBFF7240B path), so 068F is
-most likely that alias with its descriptor never made present. To find: who
-allocates 068F (VWIN32 ring-0 +28 hands out bare selectors; kernel32 then writes
-the descriptor through the LDT alias) and why Win95's write differs; `W95_LDTW=068F`
-(k32host) logs every write to that descriptor with the C stack.
+Run: `W16_LIBMAIN=KERNEL` (+ `W16_TRACE=1`, `W16_WINDOW=1` for the window) through
+tools/hiddenrun.py with an absolute exe path (a relative one fails CreateProcess, error 2).
+Build all targets (`build.cmd` with no `--target`): the lifted modules are separate
+`w16test_*.dll` parts that `--target w16test` does not relink. After a seed change:
+`sh work/relink.sh` (ne_link + build, ~2 min).
+
+**Next: a far call to F000:FF53 from USER 9:10C7** (`call far ds:[16Ch]` with ds =
+2634, not USER's DGROUP 0A67; [16C] itself is GetProcAddress(DISPLAY, 500) = 0, which
+USER checks). ds is wrong on entry to that function: suspect a frame left unbalanced
+by the USER seg 28 message thunks (many `returned past` / `unwound` lines just before,
+`seg077_1FA2`, `105F`, `1081`) or by the new thunk-handler far jump (step 13). Then:
+calc's window on the private desktop and check_calc (12+3=15; its reference must be
+cut from a Win95 render, not Win98's), then setup.ps1 (CAB order: MINI.CAB and
+PRECOPY hold Setup's Win 3.1 KRNL386/USER/GDI under the same names: never over the
+main set), then Explorer (W16_SHELL=explorer.exe) and the other gates. tools/check_*.sh
+other than check_m1/check_w16 are still win98's copies (untracked).

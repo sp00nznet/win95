@@ -91,5 +91,14 @@ if __name__ == '__main__':
     # Win98 SE's were offsets in its KRNL386/GDI/USER; Win95's go here as found.
     # KERNEL 1:653A: KRNL386's 32->16 entry, which kernel32 reaches through the
     # table at KEXP+4 (filled at run time; Win98 SE's is 1:6582).
-    res['KERNEL'] = {'1': ['0x653a']}
+    # KERNEL 3:316A/316D/3170: one routine's three entries, each skipping into the
+    # previous one's `mov bx, imm` (cl = 2, 1, 0; Win98 SE's 3:3165/3168).
+    res['KERNEL'] = {'1': ['0x653a'], '3': ['0x316a', '0x316d', '0x3170']}
+    # GDI 11:0DC2 `call cs:[si+0EC4h]`: three near stubs (`jmp far` to imports) its
+    # init steps through, counted by the words at 0EADh (1, 6, 4, 0); Win98 SE's 11:2C9E..
+    res['GDI'].setdefault('11', []).extend(['0xeb5', '0xeba', '0xebf'])
+    # USER 28:1ADA `call cs:[bx+60Bh]`: 50 near handlers (a message's size by its kind)
+    # whose table ne_codemap does not read.
+    u28 = parse_ne(os.path.join(root, 'USER.EXE')).segments[27].data
+    res['USER'].setdefault('28', []).extend(sorted({hex(struct.unpack_from('<H', u28, 0x60B + 2 * i)[0]) for i in range(50)}))
     json.dump(res, sys.stdout)
