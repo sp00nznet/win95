@@ -14,7 +14,7 @@ forget() {   # Win95 keeps the place in Streams\0 (and StreamMRU)
     MSYS2_ARG_CONV_EXCL='*' reg delete "${STREAMS%Streams}StreamMRU" /f > /dev/null 2>&1; }
 forget
 # Notepad (Start > Programs > Accessories > Notepad), then its X
-W16_INPUT="click 29,587@20;click 92,356@23;click 220,351@26;click 322,394@29;click 614,35@36" py -3 tools/hiddenrun.py --secs 44 --shot 34 --shot 42 --out work/close_np -- "$(cygpath -w "$PWD")\build\w16test.exe" --mute > /dev/null 2>&1
+W16_INPUT="click 29,587@20;click 92,356@23;click 220,351@26;click 322,394@29;click 630,57@36" py -3 tools/hiddenrun.py --secs 44 --shot 34 --shot 42 --out work/close_np -- "$(cygpath -w "$PWD")\build\w16test.exe" --mute > /dev/null 2>&1
 # calc (Start > Run > calc), then its X
 W16_INPUT="click 29,587@20;click 85,516@24;text calc@28;click 138,539@31;click 306,55@42" py -3 tools/hiddenrun.py --secs 50 --shot 40 --shot 48 --out work/close_calc -- "$(cygpath -w "$PWD")\build\w16test.exe" --mute > /dev/null 2>&1
 # My Computer: open, drag the caption 200,200 down-right, minimize, restore from the taskbar, X

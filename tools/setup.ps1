@@ -230,7 +230,7 @@ $lifts = [ordered]@{
   'xcopy'   = @('xcopy32.exe', 'kernel32.dll')
   'w16test' = @('xcopy32.exe', 'kernel32.dll', 'gdi32.dll', 'advapi32.dll', 'user32.dll', 'mpr.dll', 'mprexe.exe', 'mprserv.dll',
                 'mspwl32.dll', 'rebased\calc_1000.exe', 'comctl32.dll', 'shell32.dll', 'rebased\explorer_1400.exe',
-                'rebased\notepad_1100.exe', 'comdlg32.dll')
+                'rebased\notepad_1100.exe', 'comdlg32.dll', 'linkinfo.dll')
 }
 foreach ($k in $lifts.Keys) {
   if (Skip "src\gen\$k\recomp_dispatch.c") { Say "  ${k}: already done (skipping)."; continue }

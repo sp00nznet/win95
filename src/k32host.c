@@ -311,6 +311,7 @@ static int host_main(int argc, char** argv) {
                 "MPREXE.EXE", "MPRSERV.DLL", "MSPWL32.DLL",
                 /* the shell (SYSTEM.INI shell=calc.exe, MSGSRV32 WinExecs it) and its DLLs */
                 "MSVCRT.DLL", "SHELL32.DLL", "SHLWAPI.DLL", "COMCTL32.DLL", "COMDLG32.DLL",   /* + notepad's */
+                "LINKINFO.DLL",   /* shell32 LoadLibrarys it to read a .lnk (CShellLink): without it no shortcut resolves or runs */
                 "SHDOCVW.DLL", "BROWSEUI.DLL",   /* + Explorer's integrated shell (ieshell.inf) */
                 "SHDOC401.DLL",   /* the desktop: SHDOCVW 119 SHCreateDesktop goes to its 200 while SHELL32 is below 5.0 */
                 "..\\rebased\\OLE32.DLL" };   /* rebased to 0x7F400000: its own base runs into 0x7FFE0000 (the host's shared user page) */

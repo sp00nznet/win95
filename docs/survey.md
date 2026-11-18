@@ -270,32 +270,31 @@ build too: k32host's CreateProcessA eax race (step 9 above; win95's fix applies)
    past its top. ne_lift now decodes on past any straddled start that is not a known entry
    (export / far-call fixup): the CPU never lands inside an instruction. Win95 w16: GDI 1 and
    USER 28 change, plus two bogus streams; Win98 SE: see the regression note below.
-25. **Start menu shortcuts do nothing** (check_startprog, check_close's Notepad): the click is
-   taken, CDefFolderMenu reads lnkfile and {00021401}'s handler, then nothing; the .lnk is
-   never opened and ShellExecuteEx (0x7FDCEC8A) never runs. The menu shows the generic exe icon
-   for every shortcut, so the link is not resolved when the menu is built either. startmenu.py's
-   ID-list items now carry the empty 8.3 name Win95 reads; not enough. Open.
+25. **Start menu shortcuts did nothing** (check_startprog, check_close's Notepad): Win95's CShellLink
+   LoadLibrarys LINKINFO.DLL before it reads a .lnk, and it was neither lifted nor in SYSTEM; the load
+   failed quietly, so no link was read (generic icons) and the click ran nothing. Found with the new
+   `W9X_DOSTRACE=1` (every int 21h with its path): 7143 C:\WINDOWS\LINKINFO.DLL along the search path
+   on each click. linkinfo.dll is now in the w16test lift (setup.ps1) and k32host's SYSTEM copy list.
+   startmenu.py's .lnk was fine. check_close's Notepad X is at 630,57 on Win95 (Win98's 614,35 missed).
+26. **Start menu banner noise**: Explorer's bitmap 157 (21x130) is BI_RLE4; drv16's DeviceBitmapBits
+   and DIBtoDevice read every DIB as BI_RGB. dib_unrle (pcrecomp drv16.c) unpacks RLE4/RLE8 first.
 
 ### Where milestone 2 stands (handoff)
 
-Gates that pass (work/gates_s22.txt): `check_m1`, `check_calc`, `check_explorer`, `check_run`,
-`check_sol`, `check_mycomp`, `check_notepad`, `check_winmine`, all on Win95 coordinates and
-references. `check_close` passes everything but its Notepad part (calc closed by X; My Computer
-opened, dragged, minimized, restored, closed); `check_startprog` fails (step 25). Win98 SE
-regression: win98-recomp built against pcrecomp w95 (win98/build-w95, its w16 relinked with
-this branch's ne_lift) passes check_calc and check_explorer.
+All ten gates pass (work/gates_s26.txt): `check_m1`, `check_calc`, `check_explorer`, `check_run`,
+`check_startprog`, `check_sol`, `check_mycomp`, `check_notepad`, `check_winmine`, `check_close`.
+(tools/check_w16.sh, untracked, is Win98's chunk-1 test: its USER addresses are Win98 SE's; not a gate.)
+Win98 SE regression: win98-recomp built against pcrecomp w95 (win98/build-w95, its w16 relinked with
+this branch) passes check_calc and check_explorer. README has screenshots and a hero GIF (docs/img).
 
 Run: `W16_LIBMAIN=KERNEL W16_WINDOW=1` (+ `W16_SHELL=explorer.exe`, `W16_INPUT=...`) through
 tools/hiddenrun.py with an absolute exe path. Export PCRECOMP before build.cmd; a fresh
 configure needs both build/CMakeCache.txt and build/build.ninja gone. Build all targets.
 After a seed or lifter change: `sh work/relink.sh` (it links commdlg, winmine, sol and cards).
 Debug: `W16_WW=sel:off`, `W16_FN=2` (every lifted 16-bit function with ss:sp bp: a bp that
-equals a return offset is a lost push), `W9X_OPENTRACE=1` (LFN and 8.3 opens), `W98_REGTRACE=1`,
-`W98_STACKS=secs` (host stacks of every guest thread), w16test's `--firsthit LO HI`.
+equals a return offset is a lost push), `W9X_OPENTRACE=1` (LFN and 8.3 opens), `W9X_DOSTRACE=1`
+(every int 21h, with its path), `W98_REGTRACE=1`, `W98_STACKS=secs`, w16test's `--firsthit LO HI`.
 
-**Next, in order:**
-1. **Start menu shortcuts** (step 25): find why shell32 never loads the .lnk (CShellLink's
-   Initialize/Load); compare a .lnk Win95 itself writes (shell32 IShellLink::Save from a guest
-   run) with startmenu.py's. Then check_startprog and check_close's Notepad.
-2. The Start menu's side banner bitmap is noise.
-3. Explorer's rare far call miss into USER 4:1AF1 (step 19).
+**Next:**
+1. Explorer's rare far call miss into USER 4:1AF1 (step 19); not seen in this session's runs.
+2. Beyond milestone 2: Control Panel, Find, Help (each a new DLL to lift), check_w16 ported to Win95's USER.
