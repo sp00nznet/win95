@@ -17,9 +17,15 @@ copy (extracted CAB files, catalogs, lifted C) goes into the gitignored
 |---|---|---|
 | 1 | Survey: Win95 vs Win98 SE kernel32, boot, VxD services (`docs/survey.md`) | done for milestone 1 |
 | 2 | milestone 1: a console program on Win95's own kernel32 | **done**: `xcopy32 /?` prints exactly its string resources, `/S /I` copies a tree byte-identically, `/P` honours y/n (`tools/check_m1.sh`) |
-| 3 | milestone 2: KRNL386/USER/GDI boot, calc, Explorer | started: KRNL386's own BootStrap loads itself and boots kernel32 (`W16_LIBMAIN=KERNEL`); next is USER's LibEntry |
+| 3 | milestone 2: KRNL386/USER/GDI boot, calc, Explorer | in progress: calc works (12+3=15, `tools/check_calc.sh`), Explorer is the shell with its Start menu and Run (`check_explorer.sh`, `check_run.sh`), Solitaire (`check_sol.sh`); next: double-click, winmine, notepad |
 
 Tested with Windows 95 OSR2 (4.00.1111), English.
+
+## Setup
+
+Double-click `Setup.cmd` (or `./setup.sh` from Git Bash) with your Windows 95 OSR2 .iso in
+this folder: it extracts, lifts, builds and fills the boxed registry, then leaves
+`Windows 95 (recomp).cmd`, which starts Explorer.
 
 ## Building by hand
 
@@ -29,7 +35,7 @@ Windows 95 runtime (branch `w95`).
 
 ```
 7z x -owork\cd <your Win95 OSR2 .iso> win95\*
-for %c in (work\cd\win95\*.cab) do 7z e -y -owork\sys %c
+for %c in (work\cd\win95\win95_*.cab) do 7z e -y -owork\sys %c
 py -3 tools\seeds.py
 py -3 tools\lift.py xcopy work\sys\xcopy32.exe work\sys\kernel32.dll
 build.cmd --target xcopy
@@ -49,7 +55,7 @@ build.cmd
 set W16_LIBMAIN=KERNEL & build\w16test.exe --mute     (W16_TRACE=1 for the 16-bit side)
 ```
 
-Extract the CABs with the main set (`win95_02.cab`) last: MINI.CAB holds Setup's
+Extract only the main set (`win95_*.cab`): MINI.CAB and PRECOPY1/2.CAB hold Setup's
 Windows 3.1-based KRNL386/USER/GDI under the same names (docs/survey.md).
 
 `VXD=1 sh tools/run_xcopy.sh -- /?` traces every VxD service. An unknown

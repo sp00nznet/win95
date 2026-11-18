@@ -15,7 +15,10 @@ which is done. `tools/survey.py work/sys/kernel32.dll` lists the kernel boundary
   exactly its string resources (4 + 27), `xcopy32 C:\TEST\SRC C:\TEST\DST /S /I`
   copies a tree byte-identically and `/P` honours scripted y/n/y
   (`tools/check_m1.sh`, three checks).
-- **Milestone 2: in progress.** KRNL386 boots kernel32, GDI and USER; MSGSRV32 runs as the first task and calc starts (its menu bar draws). See the handoff at the end.
+- **Milestone 2: in progress.** KRNL386 boots kernel32, GDI and USER; calc works (12+3= shows 15,
+  `tools/check_calc.sh`); Explorer is the shell (desktop, taskbar, Start menu, Start -> Run ->
+  calc: `check_explorer.sh`, `check_run.sh`); Solitaire as the shell (`check_sol.sh`).
+  `Setup.cmd` (tools/setup.ps1) builds it all from the CD. See the handoff at the end.
 
 ## The CD
 
@@ -214,22 +217,63 @@ Win98 SE regression: win98-recomp built against pcrecomp branch w95 (build-w95)
 passes check_calc and check_explorer (pcrecomp 5c84840 and 97103d9). Its xcopy fails 1-3 runs in 30, on its own
 build too: k32host's CreateProcessA eax race (step 9 above; win95's fix applies).
 
+16. **KRNL386 1:AF9C was GDI returning past its caller.** GDI 1:8334 is near-called inside
+   81A6's frame and, after its far calls, ends `pop ax; pop bx; jmp 82F4` (81A6's epilogue).
+   ne_lift's pops-past walk stopped at calls, so 81DC's call site ran on after the guest had
+   returned and 82F4 ran a second time on a foreign frame (ds 0A67): Local32Size on a garbage
+   heap. The Local32 heap itself was fine (the failed ReAlloc before it was that frame too).
+   pcrecomp 5cb875d: after a far call the depth is unknown, and a pop then a jmp out of the
+   function still counts. Win98 SE's relift gains 23 such checks; its gates still pass.
+17. **Appearance.** reginst.py reads Win95's INFs (setupc.inf [winbase]/[winapps], shell.inf
+   [shell], timezone.inf): grey faces, navy caption, teal desktop, as Win98 SE's box did.
+   check_calc's reference is cut from a Win95 render (out/w95calc_15.png, not committed).
+18. **setup.ps1** (Setup.cmd, setup.sh): only `win95\` off the CD and only the main CAB set
+   (win95_02..28). MINI.CAB and PRECOPY1/2.CAB are never extracted, so their Windows 3.1
+   KRNL386/USER/GDI cannot overwrite the real ones (a 3.10 KRNL386 stops setup). A 7-Zip pass
+   of the main set alone matches work/sys file for file (2341 files). calc, notepad and
+   Explorer rebased (0x01000000/0x01100000/0x01400000); w16test lifts Explorer, notepad and
+   comdlg32 too. startmenu.py reads setupc.inf's Notepad line (a ;comment after the quotes).
+19. **Explorer as the shell** (W16_SHELL=explorer.exe) paints the desktop (My Computer,
+   Recycle Bin) and the taskbar with no new fix. Once (1 run in ~10) it stopped on a far call
+   miss into USER 4:1AF1; not seen since.
+20. **The Start menu click called a hook at 000C.** Win95 USER calls KEYBOARD.Inquire with
+   ds:0CC6 and keeps its global hook table from 0CCE (WH_MSGFILTER's slot at 0CCC). drv16
+   wrote Win98's 8-byte KBINFO (NumFuncKeys 12 at +6): the menu loop's CallMsgFilter ran
+   "hook" 000C, proc 0100:0000. Win95's KBINFO is 6 bytes (pcrecomp 7673614, behind
+   native32_w9x_is_win95). Found with W16_WW (now any selector) on 0A66:0CCC. Start -> Run ->
+   calc then works (check_run); the Start menu's side banner is drawn as noise (bitmap).
+21. **Solitaire** as the shell deals and its clock runs (check_sol): w16_seeds gives SOL 4:1644
+   and WINMINE 1:03EE as on Win98 SE.
+
 ### Where milestone 2 stands (handoff)
 
-Run: `W16_LIBMAIN=KERNEL` (+ `W16_TRACE=1`, `W16_WINDOW=1` for the window) through
-tools/hiddenrun.py with an absolute exe path (a relative one fails CreateProcess, error 2).
-Build all targets (`build.cmd` with no `--target`): the lifted modules are separate
-`w16test_*.dll` parts that `--target w16test` does not relink. After a seed change:
-`sh work/relink.sh` (ne_link + build, ~2 min).
+Gates that pass: `tools/check_m1.sh`, `check_calc.sh`, `check_explorer.sh`, `check_run.sh`,
+`check_sol.sh`. The others (check_notepad, mycomp, startprog, close, winmine) are still
+Win98 SE's checks (coordinates, references) and fail. Win98 SE regression: win98-recomp
+built against pcrecomp w95 (win98/build-w95, its w16 relinked with this branch's ne_lift)
+passes check_calc and check_explorer.
 
-**Next: KRNL386 1:AF9C reads a garbage flat address (EF54EF51)**, called from GDI
-1:82F4 (via 1:5A84, from USER 6:74CE) as KERNEL AF72(0, handle, heap): a 32-bit local
-heap's block size, `[[heap+handle] + [heap+6Ch] - 4]`, with the heap GDI keeps at
-ds:[138h]. Just before, the 16->32 stubs to kernel32 0xBFF92573 (cx A8) returned 0 and
-0xBFF92593 (cx AC) 25Ch: suspect a Local32 heap op that failed (check what GDI's
-Local32Init/Alloc got back, and kernel32's side of those entries). Then:
-calc's window on the private desktop and check_calc (12+3=15; its reference must be
-cut from a Win95 render, not Win98's), then setup.ps1 (CAB order: MINI.CAB and
-PRECOPY hold Setup's Win 3.1 KRNL386/USER/GDI under the same names: never over the
-main set), then Explorer (W16_SHELL=explorer.exe) and the other gates. tools/check_*.sh
-other than check_m1/check_w16 are still win98's copies (untracked).
+Run: `W16_LIBMAIN=KERNEL W16_WINDOW=1` (+ `W16_SHELL=explorer.exe`, `W16_INPUT=...`) through
+tools/hiddenrun.py with an absolute exe path. Export PCRECOMP before build.cmd; a fresh
+configure needs both build/CMakeCache.txt and build/build.ninja gone. Build all targets.
+After a seed change: `sh work/relink.sh` (it links winmine, sol and cards too).
+Debug: `W16_WW=sel:off` (first function that sees a word change), `W9X_OPENTRACE=1`.
+
+**Next, in order:**
+1. **Double-click never registers** on Win95 (My Computer on the desktop: two clicks
+   150 ms apart select it, nothing opens; no file is opened after). Sometimes the second
+   click's release is not delivered until later: the input thread waits for the machine
+   while USER polls in a drag/modal loop. Win98 SE hands the machine over in KERNEL.447
+   (1:805D); Win95's 447 is 1:8030, and yielding there stops the boot before Explorer
+   (tried, reverted): find what Win95 USER's PeekMessage really calls when the queue is
+   empty, and where USER builds WM_LBUTTONDBLCLK (its double-click time and the message
+   times from SYSTEM.6). Then check_mycomp, check_startprog, check_close with Win95
+   coordinates and references.
+2. **winmine** as the shell: its window procedure runs, then the stack unwinds past its
+   top (sp FFAE -> 0004, "near ret under a far call into 62:0005"): look at what returns
+   from 13DF:03EE / USER 13:01E4 (retf 16h) with the wrong count.
+3. **notepad** as the shell never shows a window (its thread is in kernel32's exit path,
+   BFF8787A): what makes it quit.
+4. The Start menu's side banner bitmap is noise.
+5. Explorer's rare far call miss into USER 4:1AF1 (above).
+
