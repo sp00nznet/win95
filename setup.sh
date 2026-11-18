@@ -1,15 +1,15 @@
 #!/bin/sh
-# The same setup as Setup.cmd, from Git Bash or MSYS2 on Windows. Windows 98
+# The same setup as Setup.cmd, from Git Bash or MSYS2 on Windows. Windows 95
 # here is a 32-bit Windows program built with MSVC (x86), so there is no Linux
 # or macOS build: this only hands its options to tools/setup.ps1.
 #
 #   ./setup.sh                 # every step (a rerun skips the finished ones)
-#   ./setup.sh --iso FILE      # your Windows 98 SE .iso (else one in this folder)
+#   ./setup.sh --iso FILE      # your Windows 95 OSR2 .iso (else one in this folder)
 #   ./setup.sh --force         # redo every step
 #   ./setup.sh --yes           # install what is missing without asking
 case "$(uname -s)" in
   MINGW*|MSYS*|CYGWIN*) ;;
-  *) echo "Windows 98 recomp builds and runs on Windows only (MSVC x86): run Setup.cmd there." >&2; exit 1 ;;
+  *) echo "Windows 95 recomp builds and runs on Windows only (MSVC x86): run Setup.cmd there." >&2; exit 1 ;;
 esac
 cd "$(dirname "$0")" || exit 1
 set --  "$@" end
