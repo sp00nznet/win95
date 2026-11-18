@@ -62,8 +62,8 @@ function Skip($path) { return ((Test-Path -LiteralPath $path) -and -not $Force) 
 
 Clear-Host
 Say "Windows 95 OSR2 - static recompilation setup" 'White'
-Say "You need your own Windows 95 OSR2 CD image (.iso) and about 3 GB free."
-Say "Lifting and building take about an hour, once."
+Say "You need your own Windows 95 OSR2 CD image (.iso) and about 2 GB free."
+Say "Lifting and building take 10 to 30 minutes, once."
 
 # ---------------------------------------------------------------- tools
 Step 1 "Checking the tools the pipeline needs"
@@ -129,7 +129,7 @@ if (-not (& $tkOk) -and (Test-Path (Join-Path $Toolkit '.git'))) {
   Say "  Your pcrecomp is older than this build needs."
   if (Ask "  Update it now (git pull)?") { Run "Updating pcrecomp" @('git', '-C', $Toolkit, 'pull', '--ff-only') }
 }
-if (-not (& $tkOk)) { Fail "your pcrecomp at $Toolkit has no Windows 95 runtime (vxd32.c, win16\identity): use its w95 branch. Update it: git -C `"$Toolkit`" pull" }
+if (-not (& $tkOk)) { Fail "your pcrecomp at $Toolkit has no Windows 95 runtime (vxd32.c, win16\identity). Update it: git -C `"$Toolkit`" pull" }
 $env:PCRECOMP = $Toolkit
 Say "  pcrecomp: $Toolkit"
 
@@ -177,9 +177,9 @@ else {
 Step 3 "Extracting the CD's CAB files into work\sys (a few minutes)"
 if (Skip 'work\sys\.extracted') { Say "  Already done (skipping)." }
 else {
-  # The main set only (win95_02..28). MINI.CAB and PRECOPY1/2.CAB hold Setup's own
-  # Windows 3.1-based KRNL386, USER, GDI... under the same names: never extracted,
-  # so they cannot overwrite the real ones (docs/survey.md, milestone 2 log 1).
+  # The main set (win95_02..28) first. MINI.CAB and PRECOPY1/2.CAB hold Setup's own
+  # Windows 3.1-based KRNL386, USER, GDI... under the same names, so they come
+  # last and never overwrite (docs/survey.md, milestone 2 log 1).
   $cabs = @(Get-ChildItem -Path work\cd\win95 -Filter 'win95_*.cab' -File | Sort-Object Name)
   Say "  $($cabs.Count) CABs..."
   # A file that spans two CABs reports as a sub-item error in the first (7-Zip
@@ -188,7 +188,13 @@ else {
     $code = Exec @($7z, 'e', '-y', '-owork\sys', $c.FullName)
     if ($code -ne 0) { Log "  $($c.Name): 7-Zip exit code $code" }
   }
-  foreach ($f in 'kernel32.dll', 'KRNL386.EXE', 'explorer.exe', 'xcopy32.exe') {
+  # Then PRECOPY (a two-volume set) and MINI.CAB, never overwriting (-aos): they
+  # alone hold kommctrl.dll and the INFs reginst reads (setupc, shell, timezone).
+  foreach ($c in 'PRECOPY1.CAB', 'MINI.CAB') {
+    $code = Exec @($7z, 'e', '-y', '-aos', '-owork\sys', "work\cd\win95\$c")
+    if ($code -ne 0) { Log "  ${c}: 7-Zip exit code $code" }
+  }
+  foreach ($f in 'kernel32.dll', 'KRNL386.EXE', 'explorer.exe', 'xcopy32.exe', 'kommctrl.dll', 'setupc.inf') {
     if (-not (Test-Path "work\sys\$f")) { Fail "no $f in the CABs: is this the Windows 95 OSR2 CD?" }
   }
   # the real KRNL386 is "Version 4.00" (126944 bytes); MINI.CAB's is 3.10 (75490)
@@ -224,7 +230,7 @@ else {
   Remove-Item Env:NE_IDENTITY_SEL
 }
 
-Step 7 "Lifting the 32-bit modules to C (30 to 60 minutes, once)"
+Step 7 "Lifting the 32-bit modules to C (a few minutes, once)"
 $sys = { param($l) $l | ForEach-Object { if ($_ -like '*\*') { "work\$_" } else { "work\sys\$_" } } }
 $lifts = [ordered]@{
   'xcopy'   = @('xcopy32.exe', 'kernel32.dll')

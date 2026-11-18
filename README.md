@@ -42,21 +42,41 @@ work/root, no host shell, muted. Known gaps and how to debug are at the end of d
 
 Tested with Windows 95 OSR2 (4.00.1111), English.
 
-## Setup
+## Getting Started
 
-Double-click `Setup.cmd` (or `./setup.sh` from Git Bash) with your Windows 95 OSR2 .iso in
-this folder: it extracts, lifts, builds and fills the boxed registry, then leaves
-`Windows 95 (recomp).cmd`, which starts Explorer.
+You need **your own copy of Windows 95 OSR2**: its CD image, an `.iso`.
+Nothing from Windows is in this repository or downloaded for you; everything
+is extracted and built on your machine from your CD.
+
+1. Download this repository (the green **Code** button, then **Download ZIP**)
+   and unzip it, or `git clone` it, somewhere with 2 GB free (no `&` in the path).
+2. Put your Windows 95 OSR2 `.iso` in that folder (or give it with
+   `Setup.cmd -Iso <path>`).
+3. Double-click **`Setup.cmd`**. From Git Bash, `./setup.sh` does the same
+   (`--iso FILE`, `--yes`, `--force`); it is Windows only, as the build is MSVC x86.
+4. Start Windows 95 with **`Windows 95 (recomp).cmd`** in that folder.
+
+The script asks before installing anything it needs (Python and its packages,
+7-Zip, Visual Studio 2022's C++ Build Tools, CMake, Ninja, and pcrecomp beside
+this folder, or where `PCRECOMP` points), then extracts the CD and its CABs,
+rebases, seeds, lifts and builds, and fills the guest's registry box and C:\
+(a first boot on a hidden desktop, muted). The first run took 8.5 minutes from a
+clean clone here (a 12-thread machine; slower ones take longer, mostly the
+compile) and leaves about 1.3 GB: work\ 280 MB, src\gen 66 MB, build\ 930 MB.
+A rerun skips every finished step in seconds (`-Force` redoes them). Everything it
+does goes to `setup.log`.
 
 ## Building by hand
 
 Visual Studio 2022 (x86 tools), CMake, Ninja, Python 3 with `capstone` and
-`pefile`, 7-Zip, and pcrecomp at `../pcrecomp` (or `PCRECOMP`) with the
-Windows 95 runtime (branch `w95`).
+`pefile`, 7-Zip, and pcrecomp at `../pcrecomp` (or `PCRECOMP`; its main branch has the
+Windows 95 runtime).
 
 ```
 7z x -owork\cd <your Win95 OSR2 .iso> win95\*
 for %c in (work\cd\win95\win95_*.cab) do 7z e -y -owork\sys %c
+7z e -y -aos -owork\sys work\cd\win95\PRECOPY1.CAB
+7z e -y -aos -owork\sys work\cd\win95\MINI.CAB
 py -3 tools\seeds.py
 py -3 tools\lift.py xcopy work\sys\xcopy32.exe work\sys\kernel32.dll
 build.cmd --target xcopy
@@ -76,8 +96,9 @@ build.cmd
 set W16_LIBMAIN=KERNEL & set W16_WINDOW=1 & set W16_SHELL=explorer.exe & build\w16test.exe --mute     (W16_TRACE=1 for the 16-bit side)
 ```
 
-Extract only the main set (`win95_*.cab`): MINI.CAB and PRECOPY1/2.CAB hold Setup's
-Windows 3.1-based KRNL386/USER/GDI under the same names (docs/survey.md).
+Extract the main set (`win95_*.cab`) first, then PRECOPY1.CAB and MINI.CAB without overwriting (`7z e -aos`): those hold Setup's
+Windows 3.1-based KRNL386/USER/GDI under the same names (docs/survey.md), and are
+the only source of kommctrl.dll and the INFs reginst reads.
 
 `VXD=1 sh tools/run_xcopy.sh -- /?` traces every VxD service. An unknown
 service stops the run with its id. The guest's C:\ is `work/root`; its
