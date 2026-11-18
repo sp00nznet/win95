@@ -180,3 +180,16 @@ more itself on 95:
 Win98 SE regression: win98-recomp built against pcrecomp branch w95 (build-w95)
 passes check_calc and check_explorer. Its xcopy fails 1-3 runs in 30, on its own
 build too: k32host's CreateProcessA eax race (step 9 above; win95's fix applies).
+
+### Where milestone 2 stands (handoff)
+
+kernel32's first thunk into KRNL386 (from 0xBFF97C32 through the handshake entry at
+[0xBFFBC450], via QT_Thunk 0xBFF728D0) reaches 1:6808, whose first stack read goes
+through **not-present selector 068F** (`[w16] not-present selector 068F read:
+segment 0`, then a fault at flat 01000001). QT_Thunk's Win32-thread path takes ss
+from TIB+7C and -base from TIB+78 (0xBFF7250F builds that alias from the thread's
+stack bounds, TIB-10h+14/+18; the same code as Win98's 0xBFF7240B path), so 068F is
+most likely that alias with its descriptor never made present. To find: who
+allocates 068F (VWIN32 ring-0 +28 hands out bare selectors; kernel32 then writes
+the descriptor through the LDT alias) and why Win95's write differs; `W95_LDTW=068F`
+(k32host) logs every write to that descriptor with the C stack.
