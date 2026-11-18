@@ -5,7 +5,7 @@
 # Mines are placed at random, so it compares against the run's own cells.
 cd "$(dirname "$0")/.." || exit 1
 export PCRECOMP_MUTE=1 HIDDENRUN_DESKTOP=pcrecomp_w95 W16_WINDOW=1 W16_LIBMAIN=KERNEL W16_SHELL=winmine.exe
-export W16_INPUT='click 146,171@40'
+export W16_INPUT='click 130,171@40'   # Windows 95: the field's third cell of the third row
 rm -f work/winmine_gate_*.png
 py -3 tools/hiddenrun.py --secs 47 --shot 39 --shot 46 --out work/winmine_gate -- "$(cygpath -w "$PWD")\build\w16test.exe" --mute > /dev/null 2>&1
 py -3 - <<'P'
@@ -13,7 +13,7 @@ import sys
 from PIL import Image, ImageChops
 try: a, b = (Image.open(f'work/winmine_gate_{t}.png').convert('RGB') for t in (39, 46))
 except OSError: print('winmine: no screenshot'); sys.exit(1)
-cell, nb, timer = (147, 195, 162, 210), (163, 195, 178, 210), (180, 123, 220, 147)
+cell, nb, timer = (131, 195, 145, 209), (147, 195, 161, 209), (182, 124, 220, 146)
 uncovered = ImageChops.difference(b.crop(cell), a.crop(cell)).getbbox() is not None   # (not vs its neighbour: an empty cell flood-fills it too)
 was_covered = ImageChops.difference(a.crop(cell), a.crop(nb)).getbbox() is None
 ticking = ImageChops.difference(a.crop(timer), b.crop(timer)).getbbox() is not None

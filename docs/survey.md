@@ -245,35 +245,57 @@ build too: k32host's CreateProcessA eax race (step 9 above; win95's fix applies)
 21. **Solitaire** as the shell deals and its clock runs (check_sol): w16_seeds gives SOL 4:1644
    and WINMINE 1:03EE as on Win98 SE.
 
+22. **Double-click (My Computer opens, check_mycomp).** Three bugs in a row.
+   a. USER's PeekMessage (seg 3 0BE1) calls KERNEL.447 (1:8030) for a Win32 queue; the machine
+      is now handed over there on Win95 (identity w16_farcall, matched by the return offset 0BEF),
+      so the input thread posts the second click while Explorer polls. The double-click itself
+      is built in USER seg 3 1B9D..1C09 (deadline = time + [CA], hwnd, rect from [24C]/[24E]).
+   b. That yield first stopped the boot: Win95's EnterCrst (kernel32 0xBFF7424F, KRNL386 1:7EDE)
+      stores the *thread object* as a crst's owner, Win98 the TDBX. vwin32_crst_wake wrote the
+      TDBX, so a woken thread re-entering its own Win16Mutex waited on itself. Same in
+      vwin32_thread_done (calc's exit left the Win16Mutex held: Explorer froze after calc's X).
+   c. "This file does not have a program associated": Win95's ShellExecute does RegQueryValue
+      (Folder, "shell\open") and took 2 as no association. A key with no default value answers
+      "" on Win9x; vxd32's VMM RegQueryValue does that now. reginst also makes
+      Explorer\ShellExecuteHooks the guest's whole key (the host's URL hook read through).
+   Win95 saves a folder's place in Explorer\Streams\0 and StreamMRU (the gates delete them).
+23. **notepad** (check_notepad): Win95's comdlg32 thunk-connects to the 16-bit COMMDLG.DLL, which
+   was not linked ("Error loading notepad.exe"). commdlg.new (setupc.inf installs it as
+   COMMDLG.DLL) is now linked (relink.sh, setup.ps1), copied to SYSTEM (k32host) and its
+   DLGTHKCONNECTIONDATALS dispatcher (3:01F2) seeded. Notepad's first wsprintf then needed
+   USER 28:06DC's `jmp cs:[bx+147h]` table seeded (w16_seeds).
+24. **winmine** (check_winmine): GDI CreatePen (1:565F) fell through `push 5689` into a code-map
+   start at 5666 that `mov ax, [bp+0Ch]` (5665) straddles, losing `push ax`; its frame then
+   popped the return offset as bp (bp 18F9 = the return address) and winmine's stack unwound
+   past its top. ne_lift now decodes on past any straddled start that is not a known entry
+   (export / far-call fixup): the CPU never lands inside an instruction. Win95 w16: GDI 1 and
+   USER 28 change, plus two bogus streams; Win98 SE: see the regression note below.
+25. **Start menu shortcuts do nothing** (check_startprog, check_close's Notepad): the click is
+   taken, CDefFolderMenu reads lnkfile and {00021401}'s handler, then nothing; the .lnk is
+   never opened and ShellExecuteEx (0x7FDCEC8A) never runs. The menu shows the generic exe icon
+   for every shortcut, so the link is not resolved when the menu is built either. startmenu.py's
+   ID-list items now carry the empty 8.3 name Win95 reads; not enough. Open.
+
 ### Where milestone 2 stands (handoff)
 
-Gates that pass: `tools/check_m1.sh`, `check_calc.sh`, `check_explorer.sh`, `check_run.sh`,
-`check_sol.sh`. The others (check_notepad, mycomp, startprog, close, winmine) are still
-Win98 SE's checks (coordinates, references) and fail. Win98 SE regression: win98-recomp
-built against pcrecomp w95 (win98/build-w95, its w16 relinked with this branch's ne_lift)
-passes check_calc and check_explorer.
+Gates that pass (work/gates_s22.txt): `check_m1`, `check_calc`, `check_explorer`, `check_run`,
+`check_sol`, `check_mycomp`, `check_notepad`, `check_winmine`, all on Win95 coordinates and
+references. `check_close` passes everything but its Notepad part (calc closed by X; My Computer
+opened, dragged, minimized, restored, closed); `check_startprog` fails (step 25). Win98 SE
+regression: win98-recomp built against pcrecomp w95 (win98/build-w95, its w16 relinked with
+this branch's ne_lift) passes check_calc and check_explorer.
 
 Run: `W16_LIBMAIN=KERNEL W16_WINDOW=1` (+ `W16_SHELL=explorer.exe`, `W16_INPUT=...`) through
 tools/hiddenrun.py with an absolute exe path. Export PCRECOMP before build.cmd; a fresh
 configure needs both build/CMakeCache.txt and build/build.ninja gone. Build all targets.
-After a seed change: `sh work/relink.sh` (it links winmine, sol and cards too).
-Debug: `W16_WW=sel:off` (first function that sees a word change), `W9X_OPENTRACE=1`.
+After a seed or lifter change: `sh work/relink.sh` (it links commdlg, winmine, sol and cards).
+Debug: `W16_WW=sel:off`, `W16_FN=2` (every lifted 16-bit function with ss:sp bp: a bp that
+equals a return offset is a lost push), `W9X_OPENTRACE=1` (LFN and 8.3 opens), `W98_REGTRACE=1`,
+`W98_STACKS=secs` (host stacks of every guest thread), w16test's `--firsthit LO HI`.
 
 **Next, in order:**
-1. **Double-click never registers** on Win95 (My Computer on the desktop: two clicks
-   150 ms apart select it, nothing opens; no file is opened after). Sometimes the second
-   click's release is not delivered until later: the input thread waits for the machine
-   while USER polls in a drag/modal loop. Win98 SE hands the machine over in KERNEL.447
-   (1:805D); Win95's 447 is 1:8030, and yielding there stops the boot before Explorer
-   (tried, reverted): find what Win95 USER's PeekMessage really calls when the queue is
-   empty, and where USER builds WM_LBUTTONDBLCLK (its double-click time and the message
-   times from SYSTEM.6). Then check_mycomp, check_startprog, check_close with Win95
-   coordinates and references.
-2. **winmine** as the shell: its window procedure runs, then the stack unwinds past its
-   top (sp FFAE -> 0004, "near ret under a far call into 62:0005"): look at what returns
-   from 13DF:03EE / USER 13:01E4 (retf 16h) with the wrong count.
-3. **notepad** as the shell never shows a window (its thread is in kernel32's exit path,
-   BFF8787A): what makes it quit.
-4. The Start menu's side banner bitmap is noise.
-5. Explorer's rare far call miss into USER 4:1AF1 (above).
-
+1. **Start menu shortcuts** (step 25): find why shell32 never loads the .lnk (CShellLink's
+   Initialize/Load); compare a .lnk Win95 itself writes (shell32 IShellLink::Save from a guest
+   run) with startmenu.py's. Then check_startprog and check_close's Notepad.
+2. The Start menu's side banner bitmap is noise.
+3. Explorer's rare far call miss into USER 4:1AF1 (step 19).
