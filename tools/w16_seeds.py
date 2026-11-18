@@ -104,4 +104,9 @@ if __name__ == '__main__':
     # whose table ne_codemap does not read.
     u28 = parse_ne(os.path.join(root, 'USER.EXE')).segments[27].data
     res['USER'].setdefault('28', []).extend(sorted({hex(struct.unpack_from('<H', u28, 0x60B + 2 * i)[0]) for i in range(50)}))
+    # SOL 4:1644, a callback it stores and calls far through [bp-16h], and WINMINE
+    # 1:03EE, its window procedure (RegisterClass gets it from a fixup and an
+    # immediate): as on Win98 SE, at the same offsets.
+    res['SOL'] = {'4': ['0x1644']}
+    res['WINMINE'] = {'1': ['0x3ee']}
     json.dump(res, sys.stdout)

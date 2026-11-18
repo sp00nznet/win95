@@ -219,7 +219,7 @@ Step 6 "Lifting the 16-bit modules: KRNL386, USER, GDI and friends (a few minute
 if (Skip 'work\w16\mem_image.bin') { Say "  Already done (skipping)." }
 else {
   $env:NE_IDENTITY_SEL = '1'
-  $m = @('KRNL386.EXE', 'GDI.EXE', 'USER.EXE', 'DDEML.DLL', 'MSGSRV32.EXE', 'shell.new', 'kommctrl.dll') | ForEach-Object { "work\sys\$_" }
+  $m = @('KRNL386.EXE', 'GDI.EXE', 'USER.EXE', 'DDEML.DLL', 'MSGSRV32.EXE', 'shell.new', 'kommctrl.dll', 'winmine.exe', 'sol.exe', 'cards.dll') | ForEach-Object { "work\sys\$_" }
   Run "ne_link" ($pyargs + @("$T\ne\ne_link.py", '--work', 'work\w16', '--seeds', 'work\seeds\w16.json', '--shims', "$Toolkit\runtime\win16\identity") + $m)
   Remove-Item Env:NE_IDENTITY_SEL
 }
