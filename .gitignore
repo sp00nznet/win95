@@ -1,0 +1,17 @@
+# Microsoft binaries, their analysis and the lifted C are never committed.
+work/
+src/gen/
+build/
+build-*/
+shots/
+__pycache__/
+*.exe
+*.dll
+*.log
+*.png
+!docs/**/*.png
+out/
+# your CD image, and what Setup.cmd makes
+*.iso
+Windows 95 (recomp).cmd
+Serial.txt
