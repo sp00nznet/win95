@@ -168,3 +168,15 @@ more itself on 95:
    handshake +2C/+34 (98: +1C/+24).
 6. Win95's calc.exe is linked at 0x400000 (98 SE's at 0x01000000), where the host's
    own EXE is: rebased to 0x01000000 (`work/rebased/calc_1000.exe`).
+7. With the full lift (gdi32, advapi32, user32, mpr, calc, comctl32, shell32: 14025
+   functions) ADVAPI32's and GDI32's entries run; kernel32's first QT_Thunk into
+   KRNL386 (from 0xBFF97C32, landing in 1:6808) faults reading a bad flat address
+   (01000001) through a selector. **Next**: that thunk's 16-bit frame (QT_Thunk
+   0xBFF728D0 builds it from the thread's 16-bit stack, TIB+0E on 98), then GDI.EXE
+   and USER.EXE's LibEntry, then calc as the shell, then Explorer.
+   (Rebuild note: delete build/CMakeCache.txt after the first w16test lift: CMake
+   picks the xcopy fallback at configure time.)
+
+Win98 SE regression: win98-recomp built against pcrecomp branch w95 (build-w95)
+passes check_calc and check_explorer. Its xcopy fails 1-3 runs in 30, on its own
+build too: k32host's CreateProcessA eax race (step 9 above; win95's fix applies).
