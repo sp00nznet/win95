@@ -330,6 +330,10 @@ static int host_main(int argc, char** argv) {
             /* and SHELL.NEW as SHELL.DLL (shell.inf), SHELL32's partner (Shl3216_ThunkData16) */
             _snprintf(src, MAX_PATH, "%s\\shell.new", dir); _snprintf(p, MAX_PATH, "%s\\WINDOWS\\SYSTEM\\SHELL.DLL", r);
             CopyFileA(src, p, FALSE);
+            /* and COMMDLG.NEW as COMMDLG.DLL (setupc.inf), COMDLG32's partner: without it
+             * notepad's load failed in comdlg32's thunk connect */
+            _snprintf(src, MAX_PATH, "%s\\commdlg.new", dir); _snprintf(p, MAX_PATH, "%s\\WINDOWS\\SYSTEM\\COMMDLG.DLL", r);
+            CopyFileA(src, p, FALSE);
             {   /* the accessories a W16_SHELL may name, under their installed names (accessor.inf, games.inf);
                  * notepad as rebased off 0x400000 (xcopy32.exe, this host's own EXE, is there):
                  * tools/rebase.py work/sys work/rebased notepad.exe=0x01100000, then renamed

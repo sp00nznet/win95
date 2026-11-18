@@ -86,7 +86,7 @@ def seeds(path):
 
 if __name__ == '__main__':
     root = sys.argv[1] if len(sys.argv) > 1 else 'work/sys'
-    res = dict(seeds(os.path.join(root, f)) for f in ('USER.EXE', 'GDI.EXE', 'shell.new'))
+    res = dict(seeds(os.path.join(root, f)) for f in ('USER.EXE', 'GDI.EXE', 'shell.new', 'commdlg.new'))
     # Hand seeds (call targets the code map cannot reach) are per build:
     # Win98 SE's were offsets in its KRNL386/GDI/USER; Win95's go here as found.
     # KERNEL 1:653A: KRNL386's 32->16 entry, which kernel32 reaches through the
@@ -104,6 +104,10 @@ if __name__ == '__main__':
     # whose table ne_codemap does not read.
     u28 = parse_ne(os.path.join(root, 'USER.EXE')).segments[27].data
     res['USER'].setdefault('28', []).extend(sorted({hex(struct.unpack_from('<H', u28, 0x60B + 2 * i)[0]) for i in range(50)}))
+    # USER 28:06DC `jmp cs:[bx+147h]`, bx = 2 * the byte at cs:[20Bh + c] (a format state machine,
+    # notepad's first wsprintf): its entries up to the highest index that byte table holds
+    n147 = max(b if b < 0x80 else 0 for b in u28[0x20B:0x20B + 0x80]) + 1
+    res['USER']['28'].extend(sorted({hex(struct.unpack_from('<H', u28, 0x147 + 2 * i)[0]) for i in range(n147)}))
     # SOL 4:1644, a callback it stores and calls far through [bp-16h], and WINMINE
     # 1:03EE, its window procedure (RegisterClass gets it from a fixup and an
     # immediate): as on Win98 SE, at the same offsets.
